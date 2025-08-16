@@ -1,70 +1,94 @@
-<!doctype html><meta charset="utf-8">
-<title>Camera Hard Test (GitHub Pages)</title>
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>WebAR – MindAR + Three.js (ใช้วิดีโอของเราเอง)</title>
 <style>
-  html,body{margin:0;height:100%;background:#000;overflow:hidden;font:14px system-ui}
-  #v{position:fixed;inset:0;width:100vw;height:100vh;object-fit:cover;background:#000}
-  #hud{position:fixed;left:10px;top:10px;color:#fff;z-index:10;white-space:pre;max-width:70vw}
-  #bar{position:fixed;right:10px;top:10px;z-index:10;display:flex;gap:6px;flex-wrap:wrap}
-  button,select{padding:.4rem .6rem;border-radius:.5rem;border:1px solid #777;background:#111;color:#fff}
+  html,body{margin:0;height:100%;background:#000;overflow:hidden}
+  /* วิดีโอกล้องที่คุณเปิดอยู่ */
+  #v{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;background:#000;z-index:0;display:block}
+  /* พื้นที่เรนเดอร์ 3D จะซ้อนทับวิดีโอ */
+  #app{position:fixed;inset:0}
+  #app canvas{position:fixed;inset:0;z-index:1;background:transparent}
+  #status{position:fixed;left:.75rem;top:.75rem;color:#fff;z-index:2;font:13px system-ui}
 </style>
-<div id="hud">init…</div>
-<div id="bar">
-  <button onclick="openCam()">Default</button>
-  <button onclick="openCam({video:{facingMode:{ideal:'environment'}}})">Environment</button>
-  <button onclick="openCam({video:{facingMode:'user'}})">User</button>
-  <select id="cams" onchange="pickDevice()"></select>
-  <button onclick="stopCam()">Stop</button>
-</div>
-<video id="v" autoplay playsinline muted></video>
+<!-- libs -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"></script>
+</head>
+<body>
+  <!-- ใช้วิดีโอเดียวกับที่คุณเทสต์ -->
+  <video id="v" autoplay playsinline muted></video>
+  <div id="app"></div>
+  <div id="status">กำลังเปิดกล้อง…</div>
+
 <script>
-const v = document.getElementById('v');
-const hud = document.getElementById('hud');
-const sel = document.getElementById('cams');
-let stream=null;
+const TARGETS = './mindar/targets1.mind';
+const MODEL   = './model/spino.glb';
 
-function log(...a){ const s=a.join(' '); hud.textContent=(hud.textContent+'\n'+s).trim(); console.log(s); }
+const videoEl = document.getElementById('v');
+const appEl   = document.getElementById('app');
+const statusEl= document.getElementById('status');
 
-async function permState(){
-  try{ const p = await (navigator.permissions?.query?.({name:'camera'}) || null);
-       log('permission:', p? p.state : 'unknown'); }catch{}
-}
+let mindarThree, renderer, scene, camera;
 
-async function list(){
-  const devs = await navigator.mediaDevices.enumerateDevices().catch(e=>{log('enumerate ERR',e.name); return []});
-  sel.innerHTML='';
-  devs.filter(d=>d.kind==='videoinput').forEach((d,i)=>{
-    const o=document.createElement('option');
-    o.value=d.deviceId; o.textContent=d.label||`camera ${i+1}`;
-    sel.appendChild(o);
-  });
-  log('cameras:', sel.options.length);
-}
-
-async function openCam(constraints){
-  try{
-    stopCam();
-    const c = constraints || {video:true};
-    stream = await navigator.mediaDevices.getUserMedia(c);
-    v.srcObject = stream;
-    await v.play().catch(()=>{});
-    await list();
-    log('OK', v.videoWidth+'x'+v.videoHeight, JSON.stringify(c));
-  }catch(e){
-    log('ERR', e.name, e.message);
-    if (e.name==='NotAllowedError') log('HINT: คลิกไอคอน 🔒 ข้าง URL > Camera = Allow แล้ว Reload');
-    if (e.name==='NotFoundError')  log('HINT: ไม่พบอุปกรณ์กล้อง หรือ OS ปิดสิทธิ์ให้เบราว์เซอร์');
-    if (e.name==='NotReadableError') log('HINT: แอปอื่นกำลังยึดกล้อง (Zoom/Teams/OBS) ปิดก่อน');
+// 1) เปิดกล้องก่อน (คุณทำได้แล้ว) — โค้ดนี้จะทำแทนหน้าเทสต์
+async function openCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:'environment' } } });
+    videoEl.srcObject = stream;
+    await videoEl.play().catch(()=>{});
+    statusEl.textContent = 'กล้องพร้อมแล้ว กำลังโหลด AR…';
+  } catch (e) {
+    statusEl.textContent = 'ต้องอนุญาตกล้องที่ไอคอน 🔒 แล้วรีเฟรชหน้า';
+    throw e;
   }
 }
-function stopCam(){ if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } }
-async function pickDevice(){ const id = sel.value; if(!id) return;
-  await openCam({video:{deviceId:{exact:id}}}); }
 
-(async ()=>{
-  log('navigator', !!navigator, 'mediaDevices', !!navigator.mediaDevices);
-  await permState();
-  await list();
-  // ลองเปิดแบบ environment ก่อน
-  await openCam({video:{facingMode:{ideal:'environment'}}});
+// 2) โหลด MindAR + Three ให้ใช้วิดีโอตัวนี้
+async function startAR() {
+  const MindARThree = window.MINDAR.IMAGE.MindARThree;
+  mindarThree = new MindARThree({
+    container: appEl,
+    imageTargetSrc: TARGETS,
+    video: videoEl,               // ★ ใช้วิดีโอที่เราเปิดเอง
+    uiScanning: 'yes',
+    uiLoading : 'no'
+  });
+  ({renderer, scene, camera} = mindarThree);
+  renderer.setClearColor(0x000000, 0);      // โปร่งใสทับบนวิดีโอ
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+
+  // แสงพื้นฐาน
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.0));
+
+  // เป้าภาพ index 0
+  const anchor = mindarThree.addAnchor(0);
+
+  // โหลดโมเดล 3D
+  new THREE.GLTFLoader().load(MODEL, (gltf)=>{
+    const o = gltf.scene;
+    o.position.set(0, 1, 0);
+    o.rotation.set(THREE.Math.degToRad(-90), 0, 0);
+    o.scale.set(0.5, 0.5, 0.5);
+    anchor.group.add(o);
+  });
+
+  anchor.onTargetFound = ()=> statusEl.textContent = 'พบเป้าแล้ว!';
+  anchor.onTargetLost  = ()=> statusEl.textContent = 'เล็งกล้องไปยังภาพเป้า';
+
+  await mindarThree.start();
+  renderer.setAnimationLoop(()=> renderer.render(scene, camera));
+  statusEl.textContent = 'พร้อมสแกนแล้ว — เล็งกล้องไปยังภาพเป้า';
+}
+
+// เริ่มลำดับการทำงาน
+(async()=>{
+  await openCamera();      // วิดีโอขึ้นก่อนแน่นอน
+  await startAR();         // แล้วค่อยเริ่ม MindAR
 })();
 </script>
+</body>
+</html>
