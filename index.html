@@ -1,6 +1,22 @@
 <!doctype html>
 <html lang="th">
 <head>
+
+    <style>
+  /* บังคับให้วิดีโอของ MindAR โชว์เต็มจอ */
+  #mindar-video {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    z-index: 0 !important;
+    display: block !important;
+  }
+  /* ทำ canvas ของ A-Frame โปร่งใส */
+  canvas.a-canvas { background: transparent !important; }
+</style>
+
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>WebAR – MindAR + A-Frame</title>
