@@ -1,90 +1,70 @@
-<!doctype html>
-<html lang="th">
-<head>
-
-    <style>
-  /* บังคับให้วิดีโอของ MindAR โชว์เต็มจอ */
-  #mindar-video {
-    position: fixed !important;
-    inset: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    object-fit: cover !important;
-    z-index: 0 !important;
-    display: block !important;
-  }
-  /* ทำ canvas ของ A-Frame โปร่งใส */
-  canvas.a-canvas { background: transparent !important; }
+<!doctype html><meta charset="utf-8">
+<title>Camera Hard Test (GitHub Pages)</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;font:14px system-ui}
+  #v{position:fixed;inset:0;width:100vw;height:100vh;object-fit:cover;background:#000}
+  #hud{position:fixed;left:10px;top:10px;color:#fff;z-index:10;white-space:pre;max-width:70vw}
+  #bar{position:fixed;right:10px;top:10px;z-index:10;display:flex;gap:6px;flex-wrap:wrap}
+  button,select{padding:.4rem .6rem;border-radius:.5rem;border:1px solid #777;background:#111;color:#fff}
 </style>
+<div id="hud">init…</div>
+<div id="bar">
+  <button onclick="openCam()">Default</button>
+  <button onclick="openCam({video:{facingMode:{ideal:'environment'}}})">Environment</button>
+  <button onclick="openCam({video:{facingMode:'user'}})">User</button>
+  <select id="cams" onchange="pickDevice()"></select>
+  <button onclick="stopCam()">Stop</button>
+</div>
+<video id="v" autoplay playsinline muted></video>
+<script>
+const v = document.getElementById('v');
+const hud = document.getElementById('hud');
+const sel = document.getElementById('cams');
+let stream=null;
 
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>WebAR – MindAR + A-Frame</title>
+function log(...a){ const s=a.join(' '); hud.textContent=(hud.textContent+'\n'+s).trim(); console.log(s); }
 
-  <!-- libs (CDN) -->
-  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+async function permState(){
+  try{ const p = await (navigator.permissions?.query?.({name:'camera'}) || null);
+       log('permission:', p? p.state : 'unknown'); }catch{}
+}
 
-  <style>
-    html,body{margin:0;height:100%;background:#000;overflow:hidden}
-    .hud{position:fixed;left:.75rem;top:.75rem;color:#fff;z-index:5;font:13px system-ui}
-  </style>
-</head>
-<body>
-  <div class="hud" id="status">กำลังเตรียมกล้อง…</div>
+async function list(){
+  const devs = await navigator.mediaDevices.enumerateDevices().catch(e=>{log('enumerate ERR',e.name); return []});
+  sel.innerHTML='';
+  devs.filter(d=>d.kind==='videoinput').forEach((d,i)=>{
+    const o=document.createElement('option');
+    o.value=d.deviceId; o.textContent=d.label||`camera ${i+1}`;
+    sel.appendChild(o);
+  });
+  log('cameras:', sel.options.length);
+}
 
-  <!-- A-Frame + MindAR (เริ่มสแกนอัตโนมัติ) -->
-  <a-scene
-    mindar-image="imageTargetSrc: ./mindar/targets1.mind; autoStart: true"
-    embedded
-    color-space="sRGB"
-    renderer="colorManagement: true, physicallyCorrectLights: true, alpha: true"
-    vr-mode-ui="enabled: false"
-    device-orientation-permission-ui="enabled: false">
+async function openCam(constraints){
+  try{
+    stopCam();
+    const c = constraints || {video:true};
+    stream = await navigator.mediaDevices.getUserMedia(c);
+    v.srcObject = stream;
+    await v.play().catch(()=>{});
+    await list();
+    log('OK', v.videoWidth+'x'+v.videoHeight, JSON.stringify(c));
+  }catch(e){
+    log('ERR', e.name, e.message);
+    if (e.name==='NotAllowedError') log('HINT: คลิกไอคอน 🔒 ข้าง URL > Camera = Allow แล้ว Reload');
+    if (e.name==='NotFoundError')  log('HINT: ไม่พบอุปกรณ์กล้อง หรือ OS ปิดสิทธิ์ให้เบราว์เซอร์');
+    if (e.name==='NotReadableError') log('HINT: แอปอื่นกำลังยึดกล้อง (Zoom/Teams/OBS) ปิดก่อน');
+  }
+}
+function stopCam(){ if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } }
+async function pickDevice(){ const id = sel.value; if(!id) return;
+  await openCam({video:{deviceId:{exact:id}}}); }
 
-    <!-- โหลด asset -->
-    <a-assets>
-      <!-- รูปตัวอย่าง (ถ้าเอาไปปะบน plane) -->
-      <img id="card" src="./marker/t1.png" alt="card texture" />
-      <!-- โมเดล 3D -->
-      <a-asset-item id="avatarModel" src="./model/spino.glb"></a-asset-item>
-    </a-assets>
-
-    <!-- กล้อง -->
-    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-
-    <!-- เป้า index 0 ในไฟล์ targets1.mind -->
-    <a-entity mindar-image-target="targetIndex: 0">
-      <!-- ถ้าอยากให้ขึ้นรูป 2D บนเป้า -->
-      <!-- <a-plane src="#card" position="0 0 0" width="1" height="0.55" rotation="0 0 0"></a-plane> -->
-
-      <!-- โมเดล 3D บนเป้า -->
-      <a-gltf-model
-        src="#avatarModel"
-        position="0 0 0"
-        rotation="-90 0 0"
-        scale="0.5 0.5 0.5"
-        animation-mixer>
-      </a-gltf-model>
-    </a-entity>
-  </a-scene>
-
-  <script>
-    const $status = document.getElementById('status');
-    // อัปเดตข้อความเล็กน้อยตอนเจอ/หลุดเป้า
-    document.querySelector('a-entity[mindar-image-target]').addEventListener('targetFound', ()=> $status.textContent = 'พบเป้าแล้ว!');
-    document.querySelector('a-entity[mindar-image-target]').addEventListener('targetLost',  ()=> $status.textContent = 'เล็งไปยังภาพเป้า');
-
-    // ขอสิทธิ์กล้องให้เด้งครั้งแรก (Pages เป็น HTTPS อยู่แล้ว)
-    (async ()=>{
-      try {
-        const s = await navigator.mediaDevices.getUserMedia({video:true});
-        s.getTracks().forEach(t=>t.stop());
-        $status.textContent = 'พร้อมสแกนแล้ว — เล็งกล้องไปยังภาพเป้า';
-      } catch(e) {
-        $status.textContent = 'ต้องอนุญาตกล้องที่ไอคอน 🔒 แล้วรีโหลดหน้า';
-      }
-    })();
-  </script>
-</body>
-</html>
+(async ()=>{
+  log('navigator', !!navigator, 'mediaDevices', !!navigator.mediaDevices);
+  await permState();
+  await list();
+  // ลองเปิดแบบ environment ก่อน
+  await openCam({video:{facingMode:{ideal:'environment'}}});
+})();
+</script>
