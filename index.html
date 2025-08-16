@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WebAR – MindAR + A-Frame</title>
+
+  <!-- libs (CDN) -->
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+
+  <style>
+    html,body{margin:0;height:100%;background:#000;overflow:hidden}
+    .hud{position:fixed;left:.75rem;top:.75rem;color:#fff;z-index:5;font:13px system-ui}
+  </style>
+</head>
+<body>
+  <div class="hud" id="status">กำลังเตรียมกล้อง…</div>
+
+  <!-- A-Frame + MindAR (เริ่มสแกนอัตโนมัติ) -->
+  <a-scene
+    mindar-image="imageTargetSrc: ./mindar/targets1.mind; autoStart: true"
+    embedded
+    color-space="sRGB"
+    renderer="colorManagement: true, physicallyCorrectLights: true, alpha: true"
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: false">
+
+    <!-- โหลด asset -->
+    <a-assets>
+      <!-- รูปตัวอย่าง (ถ้าเอาไปปะบน plane) -->
+      <img id="card" src="./marker/t1.png" alt="card texture" />
+      <!-- โมเดล 3D -->
+      <a-asset-item id="avatarModel" src="./model/spino.glb"></a-asset-item>
+    </a-assets>
+
+    <!-- กล้อง -->
+    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+    <!-- เป้า index 0 ในไฟล์ targets1.mind -->
+    <a-entity mindar-image-target="targetIndex: 0">
+      <!-- ถ้าอยากให้ขึ้นรูป 2D บนเป้า -->
+      <!-- <a-plane src="#card" position="0 0 0" width="1" height="0.55" rotation="0 0 0"></a-plane> -->
+
+      <!-- โมเดล 3D บนเป้า -->
+      <a-gltf-model
+        src="#avatarModel"
+        position="0 0 0"
+        rotation="-90 0 0"
+        scale="0.5 0.5 0.5"
+        animation-mixer>
+      </a-gltf-model>
+    </a-entity>
+  </a-scene>
+
+  <script>
+    const $status = document.getElementById('status');
+    // อัปเดตข้อความเล็กน้อยตอนเจอ/หลุดเป้า
+    document.querySelector('a-entity[mindar-image-target]').addEventListener('targetFound', ()=> $status.textContent = 'พบเป้าแล้ว!');
+    document.querySelector('a-entity[mindar-image-target]').addEventListener('targetLost',  ()=> $status.textContent = 'เล็งไปยังภาพเป้า');
+
+    // ขอสิทธิ์กล้องให้เด้งครั้งแรก (Pages เป็น HTTPS อยู่แล้ว)
+    (async ()=>{
+      try {
+        const s = await navigator.mediaDevices.getUserMedia({video:true});
+        s.getTracks().forEach(t=>t.stop());
+        $status.textContent = 'พร้อมสแกนแล้ว — เล็งกล้องไปยังภาพเป้า';
+      } catch(e) {
+        $status.textContent = 'ต้องอนุญาตกล้องที่ไอคอน 🔒 แล้วรีโหลดหน้า';
+      }
+    })();
+  </script>
+</body>
+</html>
