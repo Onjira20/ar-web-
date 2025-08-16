@@ -1,94 +1,52 @@
 <!doctype html>
 <html lang="th">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>WebAR – MindAR + Three.js (ใช้วิดีโอของเราเอง)</title>
-<style>
-  html,body{margin:0;height:100%;background:#000;overflow:hidden}
-  /* วิดีโอกล้องที่คุณเปิดอยู่ */
-  #v{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;background:#000;z-index:0;display:block}
-  /* พื้นที่เรนเดอร์ 3D จะซ้อนทับวิดีโอ */
-  #app{position:fixed;inset:0}
-  #app canvas{position:fixed;inset:0;z-index:1;background:transparent}
-  #status{position:fixed;left:.75rem;top:.75rem;color:#fff;z-index:2;font:13px system-ui}
-</style>
-<!-- libs -->
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>พิพิธภัณฑ์ไม้กลายเป็นหิน – WebAR</title>
+  <meta name="theme-color" content="#5A4634" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css" />
+  <!-- Three.js & MindAR -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"></script>
 </head>
 <body>
-  <!-- ใช้วิดีโอเดียวกับที่คุณเทสต์ -->
-  <video id="v" autoplay playsinline muted></video>
+  <!-- วิดีโอกล้อง (เราคุมเองป้องกันหน้าจอดำ) -->
+  <video id="cam" autoplay playsinline muted></video>
+
+  <!-- Canvas/Renderer ของ MindAR จะอยู่ใน container นี้ -->
   <div id="app"></div>
-  <div id="status">กำลังเปิดกล้อง…</div>
 
-<script>
-const TARGETS = './mindar/targets1.mind';
-const MODEL   = './model/spino.glb';
+  <!-- Brand/Header -->
+  <header class="brand">
+    <div class="brand-text">
+      <h1>พิพิธภัณฑ์ไม้กลายเป็นหิน</h1>
+      <p>Petrified Wood Museum – WebAR</p>
+    </div>
+  </header>
 
-const videoEl = document.getElementById('v');
-const appEl   = document.getElementById('app');
-const statusEl= document.getElementById('status');
+  <!-- HUD + ปุ่มควบคุม -->
+  <div class="hud">
+    <div id="status">แตะ “เริ่ม AR” เพื่อเปิดกล้อง</div>
+    <div class="controls">
+      <button id="startBtn" class="btn primary">เริ่ม AR</button>
+      <button id="dbgBtn" class="btn ghost">Debug</button>
+    </div>
+  </div>
 
-let mindarThree, renderer, scene, camera;
+  <!-- กรอบสแกนสวย ๆ -->
+  <div class="reticle">
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
+    <div class="bar"></div>
+  </div>
 
-// 1) เปิดกล้องก่อน (คุณทำได้แล้ว) — โค้ดนี้จะทำแทนหน้าเทสต์
-async function openCamera() {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:'environment' } } });
-    videoEl.srcObject = stream;
-    await videoEl.play().catch(()=>{});
-    statusEl.textContent = 'กล้องพร้อมแล้ว กำลังโหลด AR…';
-  } catch (e) {
-    statusEl.textContent = 'ต้องอนุญาตกล้องที่ไอคอน 🔒 แล้วรีเฟรชหน้า';
-    throw e;
-  }
-}
-
-// 2) โหลด MindAR + Three ให้ใช้วิดีโอตัวนี้
-async function startAR() {
-  const MindARThree = window.MINDAR.IMAGE.MindARThree;
-  mindarThree = new MindARThree({
-    container: appEl,
-    imageTargetSrc: TARGETS,
-    video: videoEl,               // ★ ใช้วิดีโอที่เราเปิดเอง
-    uiScanning: 'yes',
-    uiLoading : 'no'
-  });
-  ({renderer, scene, camera} = mindarThree);
-  renderer.setClearColor(0x000000, 0);      // โปร่งใสทับบนวิดีโอ
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-
-  // แสงพื้นฐาน
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.0));
-
-  // เป้าภาพ index 0
-  const anchor = mindarThree.addAnchor(0);
-
-  // โหลดโมเดล 3D
-  new THREE.GLTFLoader().load(MODEL, (gltf)=>{
-    const o = gltf.scene;
-    o.position.set(0, 1, 0);
-    o.rotation.set(THREE.Math.degToRad(-90), 0, 0);
-    o.scale.set(0.5, 0.5, 0.5);
-    anchor.group.add(o);
-  });
-
-  anchor.onTargetFound = ()=> statusEl.textContent = 'พบเป้าแล้ว!';
-  anchor.onTargetLost  = ()=> statusEl.textContent = 'เล็งกล้องไปยังภาพเป้า';
-
-  await mindarThree.start();
-  renderer.setAnimationLoop(()=> renderer.render(scene, camera));
-  statusEl.textContent = 'พร้อมสแกนแล้ว — เล็งกล้องไปยังภาพเป้า';
-}
-
-// เริ่มลำดับการทำงาน
-(async()=>{
-  await openCamera();      // วิดีโอขึ้นก่อนแน่นอน
-  await startAR();         // แล้วค่อยเริ่ม MindAR
-})();
-</script>
+  <script src="./main.js"></script>
 </body>
 </html>
