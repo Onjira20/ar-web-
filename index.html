@@ -15,13 +15,10 @@
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"></script>
 </head>
 <body>
-  <!-- วิดีโอกล้อง (เราคุมเองป้องกันหน้าจอดำ) -->
-  <video id="cam" autoplay playsinline muted></video>
-
-  <!-- Canvas/Renderer ของ MindAR จะอยู่ใน container นี้ -->
+  <!-- Container ของ MindAR -->
   <div id="app"></div>
 
-  <!-- Brand/Header -->
+  <!-- Header/Brand -->
   <header class="brand">
     <div class="brand-text">
       <h1>พิพิธภัณฑ์ไม้กลายเป็นหิน</h1>
@@ -38,7 +35,7 @@
     </div>
   </div>
 
-  <!-- กรอบสแกนสวย ๆ -->
+  <!-- กรอบสแกน -->
   <div class="reticle">
     <div class="corner tl"></div>
     <div class="corner tr"></div>
@@ -47,6 +44,44 @@
     <div class="bar"></div>
   </div>
 
-  <script src="./main.js"></script>
+  <!-- main.js -->
+  <script type="module">
+    document.addEventListener("DOMContentLoaded", async () => {
+      const mindarThree = new window.MINDAR.IMAGE.MindARThree({
+        container: document.querySelector("#app"),
+        imageTargetSrc: "./targets.mind", // ไฟล์ target ที่คุณสร้างจาก MindAR
+      });
+
+      const { renderer, scene, camera } = mindarThree;
+
+      // Anchor สำหรับ marker 0
+      const anchor = mindarThree.addAnchor(0);
+
+      // โหลดโมเดล
+      const loader = new THREE.GLTFLoader();
+      loader.load("./model.glb", (gltf) => {
+        gltf.scene.scale.set(0.5, 0.5, 0.5);
+        gltf.scene.position.set(0, 0, 0);
+        anchor.group.add(gltf.scene);
+      });
+
+      // ปุ่มเริ่ม AR
+      const startBtn = document.querySelector("#startBtn");
+      const statusText = document.querySelector("#status");
+
+      startBtn.addEventListener("click", async () => {
+        await mindarThree.start(); // ✅ กล้องจะเริ่มทำงาน
+        statusText.innerText = "กำลังทำงาน... ส่องกล้องไปที่ Marker";
+        renderer.setAnimationLoop(() => {
+          renderer.render(scene, camera);
+        });
+      });
+
+      // ปุ่ม debug
+      document.querySelector("#dbgBtn").addEventListener("click", () => {
+        console.log("Scene objects:", scene.children);
+      });
+    });
+  </script>
 </body>
 </html>
